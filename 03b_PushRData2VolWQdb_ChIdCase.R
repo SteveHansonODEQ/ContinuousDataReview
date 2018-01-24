@@ -1,4 +1,3 @@
-library(stringi)
 library(plyr)
 library(dplyr)
 library(reshape2)
@@ -22,17 +21,20 @@ ConCharInfo<- '//deqlab1/wqm/Volunteer Monitoring/datamanagement/R/ContinuousDat
  load(ConCharInfo)
 
 ### INPUT provide sampling organization from VolWQdb.tlu_Organization.OrgAbrv
-ORG <- 'PUR' 
-
-SubID <- '0089' # Enter the submission ID from VolWQDB
-
-aprj <- 'ODEQVolMonWQProgram'#  AWQMS Project ID
+ORG <- 'ODEQ' 
 
 ###  LOCATION OF DATA FILES TO BE PROCESSED (This shouldn't change)
 shiny_path <- "//deqlab1/wqm/Volunteer Monitoring/datamanagement/R/ContinuousDataReview/Check_shinyapp/data/"
 
 ###  LOCATION TO SAVE DATA FILES CREATED IN PROCESS
-save_path <- "//deqlab1/Vol_Data/umpqua/2014/ReferenceTemp14/Routputs/"  # make sure this ends with an /
+save_path <- "//deqlab1/wqm/TMDL/aWestern Region/MidCoast/Siletz River DO TMDL/201709Data/Rfiles/"
+
+###
+# #
+###pen the ODBC connection to the database
+
+#load("V:/RogueWISE/2016/Continuous/edits/editedData/0027_23062_14350000_DO_20150924_Emmigrant Cr at Gage EMI_NA_.Rdata")
+
 
 
 
@@ -117,38 +119,12 @@ for (i in 1:length(validdatafiles)) {
   load(fname)
   print(paste0(i, ' of ', length(validdatafiles), ' is ' , fname))
   
-  
   # Get continuous data file information from name
   fileinfo <- read.table(text = basename(fname) , sep = '_', as.is=TRUE, colClasses = "character")
   names(fileinfo) <- c('subid', 'lasar', 'LoggerID', 'charid', 'date', 'desc', 'depth_m','extension' )
   
-  #####
-  ###
-    #   #    #  ####   # #    ###
-   # #  #    #  #  #  # # #  #
-  ####  # # #   #  #  #   #   ##
-  #  #   # #    # ##  #   #     #
-  #  #   # #    ##### #   #  ###
-  print('AWQMS Logged Data Upload File')
-  
-  awdat <- tmp_data[!is.na(tmp_data$rDQL),]
-  awdat$Station <- paste0(fileinfo['lasar'],'-ORDEQ') # Add Station from fileinfo
-  awdat$Depth <- fileinfo[['depth_m']] # Add Depth fileinfo
-  awdat$EquipID <- fileinfo[['LoggerID']] # Add equipment ID
-  awdat$Unit <- ConCharInfo$Unit[which(ConCharInfo$charid == fileinfo[['charid']])]
-  
-  # Select fields needed for AWQMS upload as temporary df
-  atmp <- awdat[,c('Station', 'EquipID', 'Depth', 'charid', 'DATETIME', 'r', 'Unit', 'rDQL' )]
-  
-  #Stack files
-  if (i == 1) {
-    awqmsCnDat <- atmp
-  } else {
-    awqmsCnDat <- rbind(awqmsCnDat, atmp)
-  }
-  
-  ###
-  #####  END AWQMS
+  # Correct charid case 
+  fileinfo$charid <- as.character(ConCharInfo$charid[toupper(fileinfo$charid) == toupper(ConCharInfo$charid)])
   
   # Clean up logged result rows with poor DQL
   tmp_data$r4calc <- as.numeric(ifelse(is.na(tmp_data$rDQL) | tmp_data$rDQL == 'C'| tmp_data$rDQL == 'D',
@@ -373,7 +349,7 @@ for (i in 1:length(validdatafiles)) {
   PltDat <- merge(x = PltDat, y = daydat, by = "date")
   # get audit data
   auditfilepath <- allaudit.fileinfo$filepath[Reduce(intersect, list(which(allaudit.fileinfo$lasar == fileinfo$lasar), 
-                                                                     which(allaudit.fileinfo$charid == fileinfo$charid), 
+                                                                     which(toupper(allaudit.fileinfo$charid) == toupper(fileinfo$charid)), # toupper added to fix wrong case in charid 
                                                                      which(allaudit.fileinfo$LoggerID == fileinfo$LoggerID)))]
   load(auditfilepath)
   # Get error bar limits for audits...later. B/c of the low level criteria this will be difficult.
@@ -563,7 +539,7 @@ for (i in 1:length(validdatafiles)) {
   # Melt the dataframe from flat to Tidy long format daily data
   t_ConResult <- melt(dd2melt, id= c('date', 'CharID','Unit', 'dDTmin', 'dDTmax','cmnt','dDQL',
                                      'anaStart','anaEnd','actid', 'LASAR','charid','LoggerID',
-                                     'SiteDesc','Org_Comment'), na.rm =TRUE)
+                                     'SiteDesc', 'Org_Comment'), na.rm =TRUE)
   
   # Correct Analytical Start and End time for non-moving average fields.
   for (j in 1:length(t_ConResult$variable)) {
@@ -661,9 +637,12 @@ for (i in 1:length(validdatafiles)) {
   print(paste0(fileinfo$LoggerID, '-', fileinfo$charid, ' Audit File Info for Database'))
   # Load the audit data file based on fileinfo LASAR ID, characteristic and logger id
   auditfilepath <- allaudit.fileinfo$filepath[Reduce(intersect, list(which(allaudit.fileinfo$lasar == fileinfo$lasar), 
-                                                                     which(allaudit.fileinfo$charid == fileinfo$charid), 
+                                                                     which(toupper(allaudit.fileinfo$charid) == toupper(fileinfo$charid)), # toupper added to fix wrong case 
                                                                      which(allaudit.fileinfo$LoggerID == fileinfo$LoggerID)))]
   load(auditfilepath)
+  
+  #fix incorrect case on audit PARAMETER
+  dr_info$PARAMETER <- as.character(ConCharInfo$charid[toupper(dr_info$PARAMETER) == toupper(ConCharInfo$charid)])
   
     #
    # #
@@ -673,6 +652,9 @@ for (i in 1:length(validdatafiles)) {
   # Parse out the audit file name information
   auditfileinfo <- read.table(text = basename(auditfilepath) , sep = '_', as.is=TRUE, colClasses = "character")
   names(auditfileinfo) <- c('subid', 'lasar', 'LoggerID', 'charid', 'date', 'desc', 'audit', 'InfoExtension' )
+  
+  #fix incorrect case on auditfile info
+  auditfileinfo$charid <- as.character(ConCharInfo$charid[toupper(auditfileinfo$charid) == toupper(ConCharInfo$charid)])
   
   # ADD required fields for the activity table
   dr_info$ActivityID <- paste0(auditfileinfo$subid,'-' ,
@@ -768,7 +750,7 @@ for (i in 1:length(validdatafiles)) {
   # Rename Columns to database nomenclature
   colnames(dr_info)[c(2,3,5,8)] <- c('CharID','Result','Org_RsltComment','ORDEQ_DQL')
   
-  dr_info$Unit <- ConCharInfo$Unit[which(ConCharInfo$charid == auditfileinfo$charid)]
+  dr_info$Unit <- ConCharInfo$Unit[which(toupper(ConCharInfo$charid) == toupper(auditfileinfo$charid))] # toupper deals with incorrect case
   dr_info$RsltType <- 'Actual'
   dr_info$RsltStatus <- 'Final'
   
@@ -813,171 +795,6 @@ for (i in 1:length(validdatafiles)) {
 ################################################################################################################
 ################################################################################################################
 
-
-#####
-###
-
-  #   #    #  ####   # #    ###
- # #  #    #  #  #  # # #  #
-####  # # #   #  #  #   #   ##
-#  #   # #    # ##  #   #     #
-#  #   # #    ##### #   #  ###
-
-
-
-#####
-###
-# Timezone...Assumes Pacific Time Zone. Watch out for Malheur and Owyhee Sites.
-
-# Activity tables
-#  Add Time Zone to continuous data activity table
-t_ConDatAct$StartDateTimeZone <- stri_sub(as.character(as.POSIXct(t_ConDatAct$StartDateTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-t_ConDatAct$EndDateTimeZone <- stri_sub(as.character(as.POSIXct(t_ConDatAct$EndDateTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3) 
-# arrange dataframe to match t_Activity table in the volunteer database.
-t_ConDatAct <- t_ConDatAct[,c("ActivityID","ActivityType","SubID","SiteID", "SiteID_Context", "SiteDescription" , "StartDateTime",
-                           "StartDateTimeZone", "EndDateTime", "EndDateTimeZone", "Media", "ActivityOrg", "SmplColMthd", "SmplColEquip",
-                           "SmplEquipID", "SmplColEquipComment", "SmplDepth", "SmplDepthUnit", "Org_Comment", "DEQ_Comment", "Samplers")]
-
-#  Add Time Zone to Audit data activity table
-t_CnAudAct$StartDateTimeZone <- stri_sub(as.character(as.POSIXct(t_CnAudAct$StartDateTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-# arrange dataframe to match t_Activity table in the volunteer database.
-t_CnAudAct <- t_CnAudAct[,c("ActivityID","ActivityType","SubID","SiteID", "SiteID_Context", "SiteDescription" , "StartDateTime",
-                              "StartDateTimeZone", "Media", "ActivityOrg")]
-
-#  Add Time Zone to Continuous Daily Statistics Results data
-t_CnRslt$AnalyticalStartTimeZone <- stri_sub(as.character(as.POSIXct(t_CnRslt$AnalyticalStartTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-t_CnRslt$AnalyticalEndTimeZone <- stri_sub(as.character(as.POSIXct(t_CnRslt$AnalyticalEndTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-# arrange dataframe to match t_Result table in the volunteer database.
-t_CnRslt <- t_CnRslt[,c("ResultID", "ActivityID", "CharID", "Result", "Unit", "Method", "RsltType", "AnalyticalStartTime","AnalyticalStartTimeZone",
-                            "AnalyticalEndTime","AnalyticalEndTimeZone", "ORDEQ_DQL", "StatisticalBasis","RsltTimeBasis", "RsltStatus", "DEQ_RsltComment")]
-
-
-####
-##
-#   LOGGED DATA PREPEARTION
-
-# Remove time change duplicates for Fall time change to Standard Time
-redundantdata<-awqmsCnDat[duplicated(awqmsCnDat[,c(names(awqmsCnDat[1:(length(names(awqmsCnDat))-3)]))]),] # pull out duplicated rows based on all columns except r, Unit & rDQL
-write.csv(redundantdata, file = paste0(save_path,SubID,"RedundantCnData.csv")) # create csv of deleted rows of data
-awqmsCnDat<-awqmsCnDat[!duplicated(awqmsCnDat[,c(names(awqmsCnDat[1:(length(names(awqmsCnDat))-3)]))]),] # clean duplicated rows from dataset
-
-# Add Date column
-awqmsCnDat$Date <- strftime(awqmsCnDat$DATETIME, format =  '%m-%d-%Y')
-
-# Add Time column
-awqmsCnDat$Time <- strftime(awqmsCnDat$DATETIME, format =  '%H:%M')
-
-#  Add Time Zone
-awqmsCnDat$TimeZone <- stri_sub(as.character(as.POSIXct(awqmsCnDat$DATETIME), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-
-# Export to csv
-
-write.csv(awqmsCnDat, file = paste0(save_path, ORG,'_', aprj,'_','ContinuousDataAwqmsUpload.csv'))
-
-
-######################################
-###                                ###
-#    DATA SUBMISSION INFORMATION     #
-###                                ###
-######################################
-
-DeployInfo <- ddply(awqmsCnDat, c('Station', 'EquipID'), summarise, 
-                    startdate = min(DATETIME),
-                    enddate = max(DATETIME)
-)
-
-DeployInfo$startTZ <- stri_sub(as.character(as.POSIXct(DeployInfo$startdate), format = '%Y-%m-%d %H:%M:%S %Z') , -3) 
-DeployInfo$endTZ <- stri_sub(as.character(as.POSIXct(DeployInfo$enddate), format = '%Y-%m-%d %H:%M:%S %Z') , -3) 
-
-#load(fnames[grep(".SiteMasterInfo.RData",fnames)]) # Site Master Information 
-smi2 <- smi[,which(names(smi) %in% c('Logger_ID','LASAR_ID','Station_Description', 'Depth_m'))]
-names(smi2) <- c('EquipID', 'Station', 'Station_Description', 'Depth_m')
-smi2$Station <- paste0(smi2$Station, '-ORDEQ') 
-
-DeployInfo <- merge(DeployInfo, smi2, all = T)
-DeployInfo$Project <- aprj
-
-write.csv(DeployInfo, file = paste0(save_path, ORG,'_', aprj,'ContinuousDataAwqmsInfo.csv'))
-
-
-######################################
-###                                ###
-#    DISCRETE AUDIT DATA UPLOAD      #
-###                                ###
-######################################
-
-awAud <- merge(t_CnAudRslt, t_CnAudAct, by = 'ActivityID')
-
-# Add Project
-awAud$Project <- aprj
-
-# Convert to AWQMS Monitoring Location
-awAud$SiteID <- paste0(awAud$SiteID,'-ORDEQ')
-
-# Add Date column
-awAud$Date <- strftime(awAud$StartDateTime, format =  '%m-%d-%Y')
-
-# Add Time column
-awAud$Time <- strftime(awAud$StartDateTime, format =  '%H:%M')
-
-#  Add Time Zone
-#awAud$TimeZone <- stri_sub(as.character(as.POSIXct(awAud$StartDateTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-
-write.csv(awAud, file = paste0(save_path, ORG,'_', aprj,'ContinuousAuditDataAwqmsUpload.csv'))
-
-
-
-######################################
-###                                ###
-#     DAILY SUMMARY DATA UPLOAD      #
-###                                ###
-######################################
-
-
-# Merge daily result and daily activity table
-dySum <- merge(t_CnRslt, t_ConDatAct, by = 'ActivityID')
-
-# Add Project
-dySum$Project <- aprj
-
-# Convert to AWQMS Monitoring Location
-dySum$SiteID <- paste0(dySum$SiteID,'-ORDEQ')
-
-# Add Start Date column
-dySum$StartDate <- strftime(dySum$StartDateTime, format =  '%m-%d-%Y')
-
-# Add Start Time column
-dySum$StartTime <- strftime(dySum$StartDateTime, format =  '%H:%M')
-
-#  Add Start Time Zone
-#dySum$StartTimeZone <- stri_sub(as.character(as.POSIXct(dySum$StartDateTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-
-# Add End Date column
-dySum$EndDate <- strftime(dySum$EndDateTime, format =  '%m-%d-%Y')
-
-# Add End Time column
-dySum$EndTime <- strftime(dySum$EndDateTime, format =  '%H:%M')
-
-#  Add End Time Zone
-#dySum$EndTimeZone <- stri_sub(as.character(as.POSIXct(dySum$EndDateTime), format = '%Y-%m-%d %H:%M:%S %Z') , -3)
-
-write.csv(dySum, file = paste0(save_path, ORG,'_', aprj,'DailySumStatCnDataAwqmsUpload.csv'))
-
-
-
-
-
-####      #############################################
-#         ###                                        ###
-##        #####    END OF AWQMS SPECIFIC FILE PREP   #####
-#         ###                                        ###
-#### ND   #############################################
-
-
-
-
-
-
 # Save a csv of the daily summary stats
 write.csv(t_CnRslt, paste0(save_path,'/','TempCnRslt.csv'))
 
@@ -996,7 +813,7 @@ save(ConQC, file = paste0(save_path,'ConCharInfo.RData'))
 ## atabase prep
 
 
-ch <- odbcConnectAccess2007("//deqlab1/wqm/Volunteer Monitoring/datamanagement/VolWQdb.mdb", case="nochange")
+ch <- odbcConnectAccess("//deqlab1/wqm/Volunteer Monitoring/datamanagement/VolWQdb.mdb", case="nochange")
 odbcGetInfo(ch)
 sqlTypeInfo(ch)
 
@@ -1055,8 +872,8 @@ rm(vt)
 sqlDrop(ch, 'TempCnAct', errors = FALSE)
 sqlSave(ch, t_ConDatAct, tablename = "TempCnAct", append = FALSE, rownames = FALSE, colnames = FALSE, 
         safer = TRUE, varTypes = vt_Activity) # vt_Activity not limited here to only those in names(t_ConDatAct)
-CDAqry <- 'INSERT INTO t_Activity ( ActivityID, ActivityType, SubID, SiteID, SiteID_Context, SiteDescription, StartDateTime, StartDateTimeZone, EndDateTime, EndDateTimeZone, Media, ActivityOrg, SmplColMthd, SmplColEquip, SmplEquipID, SmplColEquipComment, SmplDepth, SmplDepthUnit, Org_Comment, DEQ_Comment, Samplers )
-SELECT TempCnAct.ActivityID, TempCnAct.ActivityType, TempCnAct.SubID, TempCnAct.SiteID, TempCnAct.SiteID_Context, TempCnAct.SiteDescription, TempCnAct.StartDateTime, TempCnAct.StartDateTimeZone, TempCnAct.EndDateTime, TempCnAct.EndDateTimeZone, TempCnAct.Media, TempCnAct.ActivityOrg, TempCnAct.SmplColMthd, TempCnAct.SmplColEquip, TempCnAct.SmplEquipID, TempCnAct.SmplColEquipComment, TempCnAct.SmplDepth, TempCnAct.SmplDepthUnit, TempCnAct.Org_Comment, TempCnAct.DEQ_Comment, TempCnAct.Samplers
+CDAqry <- 'INSERT INTO t_Activity ( ActivityID, ActivityType, SubID, SiteID, SiteID_Context, SiteDescription, StartDateTime, EndDateTime, Media, ActivityOrg, SmplColMthd, SmplColEquip, SmplEquipID, SmplColEquipComment, SmplDepth, SmplDepthUnit, Org_Comment, DEQ_Comment, Samplers )
+SELECT TempCnAct.ActivityID, TempCnAct.ActivityType, TempCnAct.SubID, TempCnAct.SiteID, TempCnAct.SiteID_Context, TempCnAct.SiteDescription, TempCnAct.StartDateTime, TempCnAct.EndDateTime, TempCnAct.Media, TempCnAct.ActivityOrg, TempCnAct.SmplColMthd, TempCnAct.SmplColEquip, TempCnAct.SmplEquipID, TempCnAct.SmplColEquipComment, TempCnAct.SmplDepth, TempCnAct.SmplDepthUnit, TempCnAct.Org_Comment, TempCnAct.DEQ_Comment, TempCnAct.Samplers
 FROM TempCnAct;'
 sqlQuery(ch, CDAqry, max = 0, buffsize = length(t_ConDatAct$ActivityID))
 
@@ -1098,8 +915,8 @@ vt_Rslt <- vt_Result[which(names(vt_Result) %in% names(t_CnRslt))]
 sqlDrop(ch, 'TempCnRslt', errors = FALSE)
 sqlSave(ch, t_CnRslt, tablename = "TempCnRslt", append = FALSE, rownames = FALSE, colnames = FALSE, 
         safer = TRUE, varTypes = vt_Rslt)
-CDRqry <- 'INSERT INTO t_Result ( ResultID, ActivityID, CharID, Result, Unit, Method, RsltType, AnalyticalStartTime, AnalyticalStartTimeZone, AnalyticalEndTime, AnalyticalEndTimeZone, ORDEQ_DQL, StatisticalBasis, RsltTimeBasis, RsltStatus, DEQ_RsltComment )
-    SELECT TempCnRslt.ResultID, TempCnRslt.ActivityID, TempCnRslt.CharID, TempCnRslt.Result, TempCnRslt.Unit, TempCnRslt.Method, TempCnRslt.RsltType, TempCnRslt.AnalyticalStartTime, TempCnRslt.AnalyticalStartTimeZone, TempCnRslt.AnalyticalEndTime, TempCnRslt.AnalyticalEndTimeZone, TempCnRslt.ORDEQ_DQL, TempCnRslt.StatisticalBasis, TempCnRslt.RsltTimeBasis, TempCnRslt.RsltStatus, TempCnRslt.DEQ_RsltComment
+CDRqry <- 'INSERT INTO t_Result ( ResultID, ActivityID, CharID, Result, Unit, Method, RsltType, AnalyticalStartTime, AnalyticalEndTime, ORDEQ_DQL, StatisticalBasis, RsltTimeBasis, RsltStatus, DEQ_RsltComment )
+    SELECT TempCnRslt.ResultID, TempCnRslt.ActivityID, TempCnRslt.CharID, TempCnRslt.Result, TempCnRslt.Unit, TempCnRslt.Method, TempCnRslt.RsltType, TempCnRslt.AnalyticalStartTime, TempCnRslt.AnalyticalEndTime, TempCnRslt.ORDEQ_DQL, TempCnRslt.StatisticalBasis, TempCnRslt.RsltTimeBasis, TempCnRslt.RsltStatus, TempCnRslt.DEQ_RsltComment
     FROM TempCnRslt;'
 sqlQuery(ch, CDRqry, max = 0, buffsize = length(t_CnRslt$ResultID))
 
@@ -1113,8 +930,8 @@ t_CnAudAct <- t_CnAudAct[!duplicated(t_CnAudAct),]
 vt_CnAudAct <- vt_Activity[which(names(vt_Activity) %in% names(t_CnAudAct))]
 sqlDrop(ch,'TempCnAudAct',errors = FALSE)
 sqlSave(ch, t_CnAudAct, tablename = "TempCnAudAct", append = FALSE, rownames = FALSE, colnames = FALSE, safer = TRUE, varTypes = vt_CnAudAct)
-CDAAqry <- 'INSERT INTO t_Activity ( ActivityID, ActivityType, SubID, SiteID, SiteID_Context, SiteDescription, StartDateTime, StartDateTimeZone, Media, ActivityOrg )
-    SELECT TempCnAudAct.ActivityID, TempCnAudAct.ActivityType, TempCnAudAct.SubID, TempCnAudAct.SiteID, TempCnAudAct.SiteID_Context, TempCnAudAct.SiteDescription, TempCnAudAct.StartDateTime, TempCnAudAct.StartDateTimeZone, TempCnAudAct.Media, TempCnAudAct.ActivityOrg
+CDAAqry <- 'INSERT INTO t_Activity ( ActivityID, ActivityType, SubID, SiteID, SiteID_Context, SiteDescription, StartDateTime, Media, ActivityOrg )
+    SELECT TempCnAudAct.ActivityID, TempCnAudAct.ActivityType, TempCnAudAct.SubID, TempCnAudAct.SiteID, TempCnAudAct.SiteID_Context, TempCnAudAct.SiteDescription, TempCnAudAct.StartDateTime, TempCnAudAct.Media, TempCnAudAct.ActivityOrg
     FROM TempCnAudAct;'
 sqlQuery(ch, CDAAqry, max = 0, buffsize = length(t_CnAudAct$ActivityID))
 

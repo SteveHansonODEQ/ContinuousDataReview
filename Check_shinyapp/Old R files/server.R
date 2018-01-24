@@ -33,15 +33,6 @@ shinyServer(function(input, output, session) {
     #ad
   })
   
-  output$obs.info <- renderPrint({
-    new_data <- DataUse()
-    nearPoints(new_data[,c("DATETIME", "r")], input$plot_click, allRows = FALSE)
-  })
-  
-  output$audit.info <- renderPrint({
-    audit_data_reactive()
-  })
-  
   output$displayAudit <- renderUI({
     df <- audit_data_reactive()
     output$intermediate <- renderDataTable(df, 

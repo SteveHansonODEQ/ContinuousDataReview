@@ -1,5 +1,6 @@
 library(readxl)
 library(plyr)
+library(lubridate)
 
 #This script expects as input an excel file with worksheets named:
 #    SiteMasterInfo
@@ -44,14 +45,27 @@ library(plyr)
 #Note: the last column name is DQL because TEMP is contained in row 4 which is a skipped row
 
 #Set the data file path and file that you want to process
-src_file <- '//deqlab1/wqm/Continuous/Temperature Data/2016/ODFW/Odfw2016CnTemp4r.xlsx'
-SubID <- '0051' # Enter the submission ID from VolWQDB
-#src_file <- '//deqlead02/Vol_Data/Hylawoods/2015/Hyla4R.xls'
-#SubID <- 'YYYY' # Enter the submission ID from VolWQDB
+src_file <- '//deqlab1/Vol_Data/umpqua/2014/ReferenceTemp14/UmpCrRefTemp4r.xlsx'
+
+SubID <- '0089' # Enter the submission ID from VolWQDB
+
 
 
 #Set the output location where the shiny app can use it
 save_dir <- '//deqlab1/wqm/Volunteer Monitoring/datamanagement/R/ContinuousDataReview/Check_shinyapp/data'
+
+
+
+# When OLD TEMPERATURE AUDIT FORMAT is used, you will need to upload these files output from CnTmpOldAudit.R 
+#load('//deqlead02/Vol_Data/UpperDeschutes/2016/audits.RData')
+#audits$COMMENTS <- as.character(NA) # the old audit didn't grab comments.
+#load('//deqlead02/Vol_Data/UpperDeschutes/2016/smi.RData')
+#load('//deqlead02/Vol_Data/UpperDeschutes/2016/logchar.RData')
+#load('//deqlead02/Vol_Data/UpperDeschutes/2016/ppcheck.RData')
+# If you load the files above, then skip the steps below down to '# Load the QC criteria for continuous data.'
+
+# for comparison to valid charid values load
+load('//deqlab1/wqm/Volunteer Monitoring/datamanagement/R/ContinuousDataReview/ConCharInfo.RData')
 
 #Grab the master info sheet that has the logger ids
 capture.output(smi <- read_excel(src_file, sheet = 'SiteMasterInfo', skip = 5), file = "nul")  ###  NOTE skip rows seem inconsistent 4 or 5
@@ -72,16 +86,27 @@ ppcheck$DATE_TIME <- as.character(ppcheck$DATE_TIME)
 ppcheck$DATE_TIME <- as.POSIXct(ppcheck$DATE_TIME, format = '%Y-%m-%d %H:%M:%S', tz = 'America/Los_Angeles')
 ppcheck$LOGGER_ID <- gsub("\\..*","",ppcheck$LOGGER_ID)# get rid of extraneous .000000
 
+#  Fix incorrect cases in PARAMETER
+for (i in seq_along(ppcheck$PARAMETER)) { 
+  ppcheck$PARAMETER[i] <- as.character(ConCharInfo$charid[which(toupper(ConCharInfo$charid) == toupper(ppcheck$PARAMETER[i]))])   
+}
+
+
 #Get the audit sheet which has the deploy and retrieval times as well
 capture.output(audits <- read_excel(src_file, sheet = 'FieldAuditResults'), file = "nul")
 audits <- audits[!is.na(audits$LOGGER_ID),]
 audits <- audits[!is.na(audits$DATE),]
 audits <- audits[!is.na(audits$TIME),]
 audits$LOGGER_ID <- gsub("\\..*","",audits$LOGGER_ID)
-audits$date_char <- strftime(audits$DATE, format = "%Y-%m-%d", tz = 'UTC')
+audits$date_char <- strftime(audits$DATE, format = '%Y-%m-%d', origin = "1970-01-01", tz = 'UTC')
 audits$time_char <- strftime(audits$TIME, format = '%H:%M:%S', tz ='UTC')
 audits$datetime <- paste(audits$date_char, audits$time_char)
 audits$AUDIT_DATETIME <- as.POSIXct(strptime(audits$datetime, format = "%Y-%m-%d %H:%M:%S", tz = 'America/Los_Angeles'))
+
+#  Fix incorrect cases in PARAMETER
+for (i in seq_along(audits$PARAMETER)) { 
+  audits$PARAMETER[i] <- as.character(ConCharInfo$charid[which(toupper(ConCharInfo$charid) == toupper(audits$PARAMETER[i]))])
+}
 
 logchar<-unique(audits[,c('LOGGER_ID','PARAMETER')])
 names(logchar)<-c('log','char')
@@ -93,6 +118,12 @@ names(logchar)<-c('log','char')
 # Load the QC criteria for continuous data
 load('//deqlab1/wqm/Volunteer Monitoring/datamanagement/R/ContinuousDataReview/ConQC.RData')
 #ConQC <- read.csv('//deqlab1/wqm/Volunteer Monitoring/datamanagement/R/ConQC.csv')
+
+
+#####
+###
+#   CHECK TO MAKE SURE THE DATA TABS MATCH THE LOGGER ID'S
+logchar$log[!which(logchar$log %in% excel_sheets(src_file))]
 
 
 ###
@@ -115,6 +146,16 @@ for (i in seq_along(logchar$log)) {
   tmp_data$time_char <- strftime(tmp_data$TIME, format = '%H:%M:%S', tz ='UTC')
   tmp_data$datetime <- paste(tmp_data$date_char, tmp_data$time_char)
   tmp_data$DATETIME <- as.POSIXct(strptime(tmp_data$datetime, format = "%Y-%m-%d %H:%M:%S", tz = 'America/Los_Angeles'))
+  
+  #  Correct times for changes between PDT and PST 
+  ifelse(length(unique(dst(tmp_data$DATETIME))) == 1, print("No Time Change"), print("Time Change Correction Needed"))
+         dttz <- tmp_data[,c(1:3,6:9)]
+         dttz$dst <- dst(dttz$DATETIME)
+         #ifelse(dttz$dst == TRUE, print('PDT'), print ('PST'))
+         dttz$UTCoffset <- ifelse(dttz$dst == TRUE, 7, 8) # determine the offset from UTC 
+         dttz$DTutc <- force_tz(dttz$DATETIME, 'UTC') + dhours(dttz$UTCoffset[1]) # set all the times to UTC based on the timezone at deployment
+         dttz$CorrectDateTime <- with_tz(dttz$DTutc, tzone = 'America/Los_Angeles') # convert the times back to Pacific
+  tmp_data$DATETIME <- dttz$CorrectDateTime # Copy the corrected datetimes back into the tmp_data dataframe.
   
   
   # pull out audits based on logger id and characteristic/parameter
@@ -243,7 +284,7 @@ for (i in seq_along(logchar$log)) {
         diff.a <- abs(dr_info_sub[j , 'AUDIT_RESULT'] - tmplv)
       } else if (dr_info_sub$PARAMETER[j] %in% qcpd) {
         diff.a <- abs((dr_info_sub[j , 'AUDIT_RESULT'] - tmplv)/dr_info_sub[j , 'AUDIT_RESULT'])
-      }
+      } else diff.a <- NA
       
       tmp.obs$AUDIT_GRADE <- ifelse(is.na(diff.a),"E",
                                     ifelse(diff.a < pA,"A",
@@ -364,11 +405,11 @@ for (i in seq_along(logchar$log)) {
   # Calculate the daily min and maximums
     # Final daily statistics should be calculated after the data has been graded...
       #these are preliminary used for anomaly considerations
-  max <- aggregate(r~date, data=tmp_data, FUN=max)
+  max <- aggregate(r~date, data=tmp_data, FUN= 'max')
   colnames(max)[2] <- "daily_max"
-  min <- aggregate(r~date, data=tmp_data, FUN=min)
+  min <- aggregate(r~date, data=tmp_data, FUN= 'min')
   colnames(min)[2] <- "daily_min"
-  mean <- aggregate(r~date, data=tmp_data, FUN=mean)
+  mean <- aggregate(r~date, data=tmp_data, FUN= 'mean')
   colnames(mean)[2] <- "daily_mean"
   
   day <- merge(x=min, y=mean,by="date",all.x=TRUE, all.y=TRUE)

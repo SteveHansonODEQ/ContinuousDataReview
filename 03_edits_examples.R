@@ -1,13 +1,13 @@
 #This script is intended to be copied and saved for each logger
 #Filename for saving this script should be equivalent to fname_edits.R
 # Set the filename - This should be what you see in the select station box in the shiny app
-fname <- "0020_99990_10429625_DO_20150420_Salmon R Hatchery_1_.Rdata"
+fname <- "0034_37372_10127731_TEMP_20160504_Kelley Creek d_s of Centennial Pond_NA_.Rdata"
 
 #This won't need to change
 path <- "//deqlab1/wqm/Volunteer Monitoring/datamanagement/R/ContinuousDataReview/Check_shinyapp/data/"
 
 # This is the directory of the original Excel files and is where this script is saved at the end
-EditPath <- '//deqlead02/Vol_Data/salmon-drift/2015/'
+#EditPath <- '//deqlead02/Vol_Data/JohnsonCrWC/2016/'
 
 load(paste0(path, fname))
 

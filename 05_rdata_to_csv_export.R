@@ -1,9 +1,10 @@
 #Designate the folder where you are getting the .Rdata file and saving the .csv
-in_out_path <- '//deqlead02/Vol_Data/salmon-drift/2015/CDO/SDC15cdo4R/'
+in_out_path <- '//deqlab1/Vol_Data/umpqua/2016/UmpRefTemp2016Tmplate/Routputs/'
 
 #Get the names for the .Rdata graded files
 fnames <- list.files(path = in_out_path, pattern = ".R[Dd]ata")
-datfls <- fnames[grep("[^0-9]+._[^0-9]+_.Rdata",fnames)] # data files
+datfls <- fnames[grep("^[0-9]+_[0-9]+_.*_.R[Dd]ata",fnames)] # data files for Volunteer sub#_lasarid_..._.Rdata
+#datfls <- fnames[grep("^TMDL.+_.Rdata",fnames)] # data files for TMDL
 audfls <- fnames[grep(".AUDIT_INFO.Rdata",fnames)] # audit files
 svdfls <- fnames[grep(".RData", fnames)] # Saved files for volunteer db.
 
